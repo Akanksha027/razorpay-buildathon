@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   try {
     const { customer, policy, cartValue, margin } = await req.json()
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
     const prompt = `You are Profit Pilot, an AI sales agent for an e-commerce merchant.
 
