@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { estimateGeminiCostInr } from '@/lib/engine'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
@@ -36,13 +37,20 @@ You MUST respond with ONLY a valid JSON object (no markdown fencing, no extra te
   "proposedDiscountPct": <number between 5 and 15>,
   "aiReasoning": "<2-3 sentence reasoning about whether this customer is worth a win-back offer, referencing their LTV, days since order, and segment>",
   "cfoCast": "<1-2 sentence CFO-style cost-benefit analysis with actual numbers>",
-  "riskScore": <number between 10 and 90>
+  "riskScore": <number between 10 and 90>,
+  "confidence": <number between 20 and 98 — how sure YOU are this win-back is worth sending. Lower for sparse or conflicting signals.>
 }
 
-Consider: high-LTV customers who haven't ordered in 30-90 days are prime targets. Low-LTV customers with very old orders are probably not worth it. Be specific with numbers.`
+Consider: high-LTV customers who haven't ordered in 30-90 days are prime targets. Low-LTV customers with very old orders are probably not worth it. Be specific with numbers.
+Be honest about confidence — do not always return high confidence.`
 
     const result = await model.generateContent(prompt)
     const text = result.response.text()
+    const usage = result.response.usageMetadata
+    const aiCostInr = estimateGeminiCostInr(
+      usage?.promptTokenCount || 850,
+      usage?.candidatesTokenCount || 260
+    )
 
     const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     const parsed = JSON.parse(cleaned)
@@ -58,8 +66,11 @@ Consider: high-LTV customers who haven't ordered in 30-90 days are prime targets
         aiReasoning: parsed.aiReasoning,
         cfoCast: parsed.cfoCast,
         riskScore: parsed.riskScore,
+        confidence: Math.min(98, Math.max(20, Number(parsed.confidence) || 70)),
         bundleDescription: `${parsed.proposedDiscountPct}% win-back via Razorpay Payment Link`,
-      }
+        aiCostInr,
+      },
+      usage: { aiCostInr },
     })
   } catch (error: any) {
     console.error('Gemini campaign error:', error)
@@ -73,7 +84,9 @@ Consider: high-LTV customers who haven't ordered in 30-90 days are prime targets
         aiReasoning: 'AI service unavailable. Falling back to conservative 8% win-back discount.',
         cfoCast: 'Fallback: ₹240 cost. Based on segment average response rate of 42%.',
         riskScore: 30,
+        confidence: 35,
         bundleDescription: '8% win-back via Razorpay Payment Link',
+        aiCostInr: 0,
       }
     })
   }

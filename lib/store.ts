@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { create, type StoreApi, type UseBoundStore } from 'zustand'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,7 +18,10 @@ export interface AuditEntry {
   aiReasoning: string
   cfoCast: string
   riskScore: number
+  confidence: number
+  aiCostInr: number
   policyResult: string
+  escalationReason?: string
   status: DecisionStatus
   razorpayId?: string
   budgetBefore: number
@@ -27,10 +30,22 @@ export interface AuditEntry {
   isAnomaly?: boolean
   anomalyReason?: string
   failureDetails?: string
+  webhookFired?: boolean
+  webhookPayload?: string
 }
 
 export interface PendingApproval {
   entry: AuditEntry
+}
+
+export interface WebhookEvent {
+  id: string
+  timestamp: Date
+  decisionId: string
+  channel: 'slack' | 'webhook'
+  endpoint: string
+  payload: string
+  status: 'delivered' | 'stubbed'
 }
 
 export interface PolicyConfig {
@@ -40,6 +55,7 @@ export interface PolicyConfig {
   minMarginFloor: number
   maxDiscountPct: number
   aggressiveMode: boolean
+  confidenceThreshold: number
 }
 
 export interface BudgetState {
@@ -80,7 +96,8 @@ function makeInitialAudit(): AuditEntry[] {
       cartValue: 1000, margin: 62,
       aiReasoning: "Customer has 3 prior purchases in apparel. Cart margin is 62%. Bundle upsell adds ₹80 discount on a ₹960 add-on. LTV risk is low at 0.36% of customer's total spend. Expected repeat-purchase probability: +22%.",
       cfoCast: 'Costs ₹80 (0.36% of C482 LTV ₹22,400). Historical bundle acceptance: 67%. Expected incremental revenue: ₹880.',
-      riskScore: 18, policyResult: 'Within all policy bounds. Budget impact: ₹80 / ₹660 remaining.', status: 'auto_approved',
+      riskScore: 18, confidence: 88, aiCostInr: 0.12,
+      policyResult: 'Within all policy bounds. Budget impact: ₹80 / ₹660 remaining.', status: 'auto_approved',
       razorpayId: 'pay_NK28X9', budgetBefore: 1760, budgetAfter: 1840, timestamp: new Date(Date.now() - 2 * 60000),
     },
     {
@@ -89,7 +106,12 @@ function makeInitialAudit(): AuditEntry[] {
       cartValue: 2800, margin: 58,
       aiReasoning: 'Customer last ordered 45 days ago. Propensity to churn elevated. 15% discount estimated to deliver 78% win-back probability. Exceeds configured max discount policy of 10%.',
       cfoCast: 'Costs ₹420 (3.75% of LTV ₹11,200). Win-back probability at 15%: ~78%. Expected incremental revenue (90d): ₹2,200.',
-      riskScore: 62, policyResult: 'Exceeded 10% max discount policy. Escalated for human review.', status: 'escalated',
+      riskScore: 62, confidence: 71, aiCostInr: 0.14,
+      policyResult: 'Exceeded 10% max discount policy. Escalated for human review.',
+      escalationReason: 'Policy: max discount exceeded',
+      status: 'escalated',
+      webhookFired: true,
+      webhookPayload: JSON.stringify({ channel: 'slack', text: 'Escalation: 15% win-back for C731 needs approval' }, null, 2),
       budgetBefore: 1700, budgetAfter: 1700, timestamp: new Date(Date.now() - 4 * 60000),
     },
     {
@@ -98,7 +120,8 @@ function makeInitialAudit(): AuditEntry[] {
       cartValue: 1100, margin: 48,
       aiReasoning: 'Customer is in low-value segment. Daily campaign budget has only ₹120 remaining — insufficient for ₹150 offer. Agent ranked this customer 14th by ROI and cut offer first.',
       cfoCast: 'Budget headroom: ₹120. Offer cost: ₹150. Delta: -₹30. Customer ranked lowest ROI in this campaign run.',
-      riskScore: 45, policyResult: 'Daily campaign cap exhausted. Offer cut — insufficient budget.', status: 'rejected',
+      riskScore: 45, confidence: 82, aiCostInr: 0.11,
+      policyResult: 'Daily campaign cap exhausted. Offer cut — insufficient budget.', status: 'rejected',
       budgetBefore: 1700, budgetAfter: 1700, timestamp: new Date(Date.now() - 10 * 60000),
     },
     {
@@ -107,7 +130,8 @@ function makeInitialAudit(): AuditEntry[] {
       cartValue: 3650, margin: 55,
       aiReasoning: 'Repeat buyer with strong bag + accessories affinity. Bundle offer is 3.3% of last order value. Margin post-discount remains at 52%, above the floor.',
       cfoCast: 'Costs ₹120 (0.63% of LTV ₹18,900). Cart affinity score: 0.82. Expected upsell conversion: 71%.',
-      riskScore: 12, policyResult: 'Within all policy bounds. Margin check: 52% > 45% floor.', status: 'auto_approved',
+      riskScore: 12, confidence: 91, aiCostInr: 0.13,
+      policyResult: 'Within all policy bounds. Margin check: 52% > 45% floor.', status: 'auto_approved',
       razorpayId: 'pay_NK24P8', budgetBefore: 1640, budgetAfter: 1760, timestamp: new Date(Date.now() - 16 * 60000),
     },
   ]
@@ -123,10 +147,38 @@ function makeInitialPending(audit: AuditEntry[]): PendingApproval[] {
         cartValue: 870, margin: 52,
         aiReasoning: 'Returning customer in apparel. 12% discount would bring margin to 40% — below the 45% floor. LTV suggests potential to convert to high-value tier. Agent escalates for merchant judgment.',
         cfoCast: 'Costs ₹104 (4.95% of LTV ₹2,100). Post-discount margin: 40%. Below floor by 5pp. Requires merchant override.',
-        riskScore: 78, policyResult: 'Proposed margin (40%) below 45% minimum floor. Human approval required.', status: 'escalated',
+        riskScore: 78, confidence: 48, aiCostInr: 0.15,
+        policyResult: 'Proposed margin (40%) below 45% minimum floor. Human approval required.',
+        escalationReason: 'Policy: margin floor + low AI confidence (48%)',
+        status: 'escalated',
+        webhookFired: true,
+        webhookPayload: JSON.stringify({ channel: 'slack', text: 'Escalation: 12% offer for C094 — confidence 48%' }, null, 2),
         budgetBefore: 1840, budgetAfter: 1840, timestamp: new Date(Date.now() - 6 * 60000),
       }
     }
+  ]
+}
+
+function makeInitialWebhooks(): WebhookEvent[] {
+  return [
+    {
+      id: 'wh_seed1',
+      timestamp: new Date(Date.now() - 4 * 60000),
+      decisionId: 'dec_8f39',
+      channel: 'slack',
+      endpoint: 'https://hooks.slack.com/services/DEMO/PROFIT/PILOT',
+      payload: JSON.stringify({ text: '⚠️ Escalation: 15% win-back for C731 needs approval' }, null, 2),
+      status: 'stubbed',
+    },
+    {
+      id: 'wh_seed2',
+      timestamp: new Date(Date.now() - 6 * 60000),
+      decisionId: 'dec_8f55',
+      channel: 'webhook',
+      endpoint: '/api/webhook/escalation',
+      payload: JSON.stringify({ text: '⚠️ Escalation: 12% offer for C094 — confidence 48%' }, null, 2),
+      status: 'stubbed',
+    },
   ]
 }
 
@@ -141,6 +193,8 @@ interface ProfitPilotState {
   pendingApprovals: PendingApproval[]
   customers: CustomerRecord[]
   revenueRecovered: number
+  aiCostSpent: number
+  webhookLog: WebhookEvent[]
   totalDecisions: number
   totalAutoApproved: number
   totalEscalated: number
@@ -151,13 +205,14 @@ interface ProfitPilotState {
   addAuditEntry: (entry: AuditEntry) => void
   resolveApproval: (id: string, resolution: 'approved' | 'rejected') => void
   addPendingApproval: (entry: AuditEntry) => void
+  pushWebhookEvent: (event: Omit<WebhookEvent, 'id' | 'timestamp'> & { id?: string; timestamp?: Date }) => void
 }
 
 // Lazy-create the store once, on the client side only.
 // This prevents Zustand's useContext from running during Next.js SSR.
-let _store: ReturnType<typeof create<ProfitPilotState>> | null = null
+let _store: UseBoundStore<StoreApi<ProfitPilotState>> | null = null
 
-function getStore() {
+function getStore(): UseBoundStore<StoreApi<ProfitPilotState>> {
   if (_store) return _store
 
   const initialAudit = makeInitialAudit()
@@ -174,6 +229,7 @@ function getStore() {
       minMarginFloor: 45,
       maxDiscountPct: 10,
       aggressiveMode: false,
+      confidenceThreshold: 55,
     },
 
     budget: { dailyUsed: 1840, campaignUsed: 1200, upsellUsed: 640 },
@@ -182,6 +238,8 @@ function getStore() {
     pendingApprovals: initialPending,
     customers: MOCK_CUSTOMERS,
     revenueRecovered: 42680,
+    aiCostSpent: 3.42,
+    webhookLog: makeInitialWebhooks(),
     totalDecisions: 28,
     totalAutoApproved: 24,
     totalEscalated: 3,
@@ -197,6 +255,7 @@ function getStore() {
       totalEscalated: entry.status === 'escalated' ? s.totalEscalated + 1 : s.totalEscalated,
       revenueRecovered: (entry.status === 'auto_approved' || entry.status === 'approved')
         ? s.revenueRecovered + Math.round(entry.cartValue * 0.12) : s.revenueRecovered,
+      aiCostSpent: s.aiCostSpent + (entry.aiCostInr || 0),
       budget: {
         ...s.budget,
         dailyUsed: (entry.status === 'auto_approved' || entry.status === 'approved')
@@ -206,8 +265,23 @@ function getStore() {
     })),
 
     addPendingApproval: (entry) => set((s) => ({
-      pendingApprovals: [{ entry }, ...s.pendingApprovals],
+      pendingApprovals: [{ entry }, ...s.pendingApprovals.filter(p => p.entry.id !== entry.id)],
+      auditLog: s.auditLog.some(e => e.id === entry.id) ? s.auditLog : [entry, ...s.auditLog],
+      totalDecisions: s.auditLog.some(e => e.id === entry.id) ? s.totalDecisions : s.totalDecisions + 1,
       totalEscalated: s.totalEscalated + 1,
+      aiCostSpent: s.aiCostSpent + (entry.aiCostInr || 0),
+    })),
+
+    pushWebhookEvent: (event) => set((s) => ({
+      webhookLog: [{
+        id: event.id || `wh_${Math.random().toString(36).slice(2, 8)}`,
+        timestamp: event.timestamp || new Date(),
+        decisionId: event.decisionId,
+        channel: event.channel,
+        endpoint: event.endpoint,
+        payload: event.payload,
+        status: event.status,
+      }, ...s.webhookLog].slice(0, 40),
     })),
 
     resolveApproval: (id, resolution) => set((s) => {

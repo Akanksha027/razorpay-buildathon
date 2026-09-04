@@ -104,6 +104,124 @@ export function runPolicyCheck(
   return { autoApprove: true, escalate: false, reject: false, reason: `Within all policy bounds. Margin check: ${postDiscountMargin.toFixed(1)}% > ${policy.minMarginFloor}% floor. Budget impact: ₹${proposedDiscount} / ₹${Math.max(0, budgetRemaining)} remaining.` }
 }
 
+// ─── Confidence Check (independent safety axis) ──────────────────────────────
+
+export interface ConfidenceCheckResult {
+  escalate: boolean
+  reason: string
+}
+
+export function runConfidenceCheck(
+  confidence: number,
+  threshold: number
+): ConfidenceCheckResult {
+  if (confidence < threshold) {
+    return {
+      escalate: true,
+      reason: `AI confidence ${confidence}% is below the ${threshold}% threshold. Forced escalation — the model itself is uncertain, independent of whether policy numbers would have passed.`,
+    }
+  }
+  return {
+    escalate: false,
+    reason: `AI confidence ${confidence}% ≥ ${threshold}% threshold. No confidence-based escalation.`,
+  }
+}
+
+// ─── Counterfactuals ─────────────────────────────────────────────────────────
+
+export interface CounterfactualLane {
+  label: string
+  action: 'approve' | 'reject' | 'escalate' | 'block'
+  discountCostInr: number
+  recoveredRevenueInr: number
+  note: string
+}
+
+export interface CounterfactualResult {
+  alwaysApprove: CounterfactualLane
+  flat10: CounterfactualLane
+  actual: CounterfactualLane
+  savingsVsAlwaysApprove: number
+  savingsVsFlat10: number
+}
+
+export function computeCounterfactuals(opts: {
+  proposedDiscountPct: number
+  proposedDiscountInr: number
+  cartValueInr: number
+  status: string
+  razorpayAmountInr?: number
+  isAnomaly?: boolean
+}): CounterfactualResult {
+  const {
+    proposedDiscountPct,
+    proposedDiscountInr,
+    cartValueInr,
+    status,
+    razorpayAmountInr = 0,
+    isAnomaly = false,
+  } = opts
+
+  const flat10Cost = Math.round(cartValueInr * 0.1)
+  const flat10Revenue = Math.round(cartValueInr * 0.9)
+
+  const alwaysApprove: CounterfactualLane = {
+    label: 'Always approve',
+    action: 'approve',
+    discountCostInr: proposedDiscountInr,
+    recoveredRevenueInr: Math.max(0, cartValueInr - proposedDiscountInr),
+    note: isAnomaly
+      ? `Naive system would have APPROVED the ${proposedDiscountPct}% offer — including this anomaly. Cost: ₹${proposedDiscountInr}.`
+      : `Would auto-approve every AI proposal at ${proposedDiscountPct}%. Discount cost ₹${proposedDiscountInr}.`,
+  }
+
+  const flat10: CounterfactualLane = {
+    label: 'Flat 10%',
+    action: 'approve',
+    discountCostInr: flat10Cost,
+    recoveredRevenueInr: flat10Revenue,
+    note: `Blind 10% on every offer. Cost ₹${flat10Cost}. No margin/budget/confidence gating.`,
+  }
+
+  const approved = status === 'auto_approved' || status === 'approved'
+  const escalated = status === 'escalated'
+  const blocked = status === 'caught_anomaly' || status === 'rejected'
+
+  let actualAction: CounterfactualLane['action'] = 'approve'
+  if (escalated) actualAction = 'escalate'
+  else if (blocked) actualAction = 'block'
+  else if (!approved) actualAction = 'reject'
+
+  const actual: CounterfactualLane = {
+    label: 'Profit Pilot',
+    action: actualAction,
+    discountCostInr: approved ? proposedDiscountInr : 0,
+    recoveredRevenueInr: approved
+      ? razorpayAmountInr || Math.round(cartValueInr * 0.12)
+      : 0,
+    note: approved
+      ? `Engine approved. Discount cost ₹${proposedDiscountInr}; recovered ~₹${razorpayAmountInr || Math.round(cartValueInr * 0.12)}.`
+      : escalated
+      ? `Held for human review — avoided automatic ₹${proposedDiscountInr} spend.`
+      : `Blocked before payment. Avoided ₹${proposedDiscountInr} that naive systems would have spent.`,
+  }
+
+  return {
+    alwaysApprove,
+    flat10,
+    actual,
+    savingsVsAlwaysApprove: alwaysApprove.discountCostInr - actual.discountCostInr,
+    savingsVsFlat10: flat10.discountCostInr - actual.discountCostInr,
+  }
+}
+
+export function estimateGeminiCostInr(promptTokens = 800, completionTokens = 250): number {
+  const inputUsd = (promptTokens / 1_000_000) * 0.15
+  const outputUsd = (completionTokens / 1_000_000) * 0.6
+  const inr = (inputUsd + outputUsd) * 83
+  return Math.max(0.01, Math.round(inr * 100) / 100)
+}
+
 // ─── AI Reasoning Engine (Now calls real Gemini API via server routes) ────────
 
 export interface AIDecision {
@@ -113,7 +231,9 @@ export interface AIDecision {
   aiReasoning: string
   cfoCast: string
   riskScore: number
+  confidence: number
   bundleDescription: string
+  aiCostInr?: number
 }
 
 /**
@@ -163,7 +283,9 @@ export async function generateUpsellDecision(
       aiReasoning: `AI service temporarily unavailable. Using conservative 8% bundle discount for ${customer.name} (${customer.segmentTag} segment, LTV ₹${customer.totalLTV}).`,
       cfoCast: `Fallback offer: ₹${discount} cost. Based on historical average for ${customer.segmentTag} customers.`,
       riskScore: 25,
+      confidence: 40,
       bundleDescription: 'Standard bundle (fallback)',
+      aiCostInr: 0,
     }
   }
 }
@@ -210,7 +332,9 @@ export async function generateCampaignDecision(
       aiReasoning: `AI service temporarily unavailable. Using conservative 8% win-back for ${customer.name}.`,
       cfoCast: `Fallback: ₹${discount} cost against LTV of ₹${customer.totalLTV}.`,
       riskScore: 30,
+      confidence: 40,
       bundleDescription: '8% win-back via Razorpay Payment Link',
+      aiCostInr: 0,
     }
   }
 }

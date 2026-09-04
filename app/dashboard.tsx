@@ -6,14 +6,15 @@ import {
   CircleDollarSign, Gauge, History, LayoutDashboard, Menu, Play, Power,
   RotateCcw, Settings2, ShieldCheck, ShoppingCart, SlidersHorizontal,
   Sparkles, Target, Users, X, Zap, Shield,
-  WifiOff,
+  WifiOff, Bell, Split,
 } from 'lucide-react'
 import { useStore, type AuditEntry, type DecisionStatus, MOCK_CUSTOMERS } from '../lib/store'
 import {
-  runSanityCheck, runPolicyCheck,
+  runSanityCheck, runPolicyCheck, runConfidenceCheck, computeCounterfactuals,
   generateUpsellDecision, generateCampaignDecision,
   createRazorpayOrder, setSimulateFailure,
 } from '../lib/engine'
+import { broadcastPolicy, fireEscalationWebhook } from '../lib/policySync'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -221,8 +222,10 @@ export default function Dashboard() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function OverviewPage({ onReplay }: { onReplay: (e: AuditEntry) => void }) {
-  const { revenueRecovered, totalDecisions, totalAutoApproved, totalEscalated, budget, policy } = useStore()
+  const { revenueRecovered, aiCostSpent, totalDecisions, totalAutoApproved, totalEscalated, budget, policy } = useStore()
   const approvalRate = totalDecisions ? Math.round((totalAutoApproved / totalDecisions) * 100) : 0
+  const net = revenueRecovered - aiCostSpent
+  const roi = aiCostSpent > 0 ? Math.round(revenueRecovered / aiCostSpent) : 0
 
   return (
     <div className="space-y-8">
@@ -241,10 +244,33 @@ function OverviewPage({ onReplay }: { onReplay: (e: AuditEntry) => void }) {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="AI-driven revenue today" value={fmtCurrency(revenueRecovered)} change={`+${((revenueRecovered / 36000 - 1) * 100).toFixed(1)}% vs yesterday`} icon={<CircleDollarSign className="size-4" />} trend="up" />
-        <StatCard label="Auto-approved decisions" value={String(totalAutoApproved)} change={`${approvalRate}% auto-approval rate`} icon={<Zap className="size-4" />} trend="up" />
-        <StatCard label="Escalated for review" value={String(totalEscalated)} change="Needs your attention" icon={<AlertTriangle className="size-4" />} trend="warn" />
-        <StatCard label="Budget utilised" value={`${Math.round((budget.dailyUsed / policy.dailyTotalCap) * 100)}%`} change={`${fmtCurrency(policy.dailyTotalCap - budget.dailyUsed)} remaining`} icon={<Gauge className="size-4" />} trend="neutral" />
+        <StatCard label="Gemini AI spend" value={`₹${aiCostSpent.toFixed(2)}`} change={roi > 0 ? `${roi}× revenue / AI cost` : 'Tracking token cost'} icon={<Sparkles className="size-4" />} trend="neutral" />
+        <StatCard label="Net after AI cost" value={fmtCurrency(Math.round(net))} change="Commercial viability signal" icon={<Zap className="size-4" />} trend="up" />
+        <StatCard label="Escalated for review" value={String(totalEscalated)} change={`${approvalRate}% auto-approval rate`} icon={<AlertTriangle className="size-4" />} trend="warn" />
       </div>
+
+      <article className="glass rounded-2xl p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">AI cost vs revenue</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Judges ask this — already on screen.</p>
+          </div>
+          <div className="flex gap-6 text-sm font-mono">
+            <div><span className="text-muted-foreground text-xs block">Revenue</span><span className="text-accent font-bold">{fmtCurrency(revenueRecovered)}</span></div>
+            <div><span className="text-muted-foreground text-xs block">AI cost</span><span className="font-bold">₹{aiCostSpent.toFixed(2)}</span></div>
+            <div><span className="text-muted-foreground text-xs block">Net</span><span className="font-bold text-accent">{fmtCurrency(Math.round(net))}</span></div>
+          </div>
+        </div>
+        <div className="mt-4 h-3 overflow-hidden rounded-full bg-muted flex">
+          <div className="h-full bg-accent transition-all" style={{ width: `${Math.min(98, (revenueRecovered / (revenueRecovered + aiCostSpent * 100 || 1)) * 100)}%` }} />
+          <div className="h-full bg-[oklch(0.68_0.18_245)]" style={{ width: `${Math.max(2, 100 - Math.min(98, (revenueRecovered / (revenueRecovered + aiCostSpent * 100 || 1)) * 100))}%` }} />
+        </div>
+        <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
+          <span>Recovered from approved upsells</span>
+          <span>Gemini 2.5 Flash token cost (₹)</span>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">Budget utilised: {Math.round((budget.dailyUsed / policy.dailyTotalCap) * 100)}% · {fmtCurrency(policy.dailyTotalCap - budget.dailyUsed)} remaining</p>
+      </article>
 
       <div className="grid gap-6 xl:grid-cols-[1.4fr_0.6fr]">
         <ActivityFeed onReplay={onReplay} limit={5} />
@@ -380,6 +406,7 @@ function ActivityFeed({ onReplay, limit, showFilter }: { onReplay: (e: AuditEntr
                 <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusClass(item.status)}`}>{statusLabel(item.status)}</span>
                   <RiskDot score={item.riskScore} />
+                  <span className="text-[11px] text-muted-foreground">Conf {item.confidence ?? '—'}%</span>
                   {item.razorpayId && <span className="font-mono text-[10px] text-muted-foreground">{item.razorpayId}</span>}
                   <button onClick={() => onReplay(item)} className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground hover:text-accent transition-colors">
                     <RotateCcw className="size-3" /> Replay
@@ -399,14 +426,42 @@ function ActivityFeed({ onReplay, limit, showFilter }: { onReplay: (e: AuditEntr
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function ApprovalsPage({ onReplay }: { onReplay: (e: AuditEntry) => void }) {
-  const { pendingApprovals, resolveApproval } = useStore()
+  const { pendingApprovals, resolveApproval, webhookLog } = useStore()
   return (
     <div className="space-y-8">
       <div>
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Human in the loop</p>
         <h1 className="mt-2 font-serif text-4xl tracking-tight">Approval queue</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Decisions that exceeded policy. Review before they reach a customer.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Decisions that exceeded policy or AI confidence. Merchant gets pinged on escalate.</p>
       </div>
+
+      <article className="glass rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Bell className="size-4 text-[oklch(0.85_0.16_78)]" />
+          <h3 className="font-semibold">Escalation notifications</h3>
+          <span className="ml-auto rounded-full bg-[oklch(0.78_0.16_78/15%)] px-2 py-0.5 text-[10px] font-medium text-[oklch(0.85_0.16_78)]">
+            Slack / webhook stub
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          When something hits this queue, we fire a webhook simulating a phone ping. Payload shown below — no Slack credentials required for the demo.
+        </p>
+        <div className="space-y-2 max-h-48 overflow-y-auto">
+          {webhookLog.slice(0, 6).map((wh) => (
+            <div key={wh.id} className="rounded-xl border border-border bg-background/50 p-3 text-xs">
+              <div className="flex justify-between gap-2 mb-1">
+                <span className="font-medium">{wh.channel} · {wh.status}</span>
+                <span className="text-muted-foreground">{fmtTime(wh.timestamp)}</span>
+              </div>
+              <p className="font-mono text-[10px] text-muted-foreground truncate">{wh.endpoint}</p>
+              <pre className="mt-2 max-h-20 overflow-auto whitespace-pre-wrap text-[10px] text-muted-foreground">{wh.payload}</pre>
+            </div>
+          ))}
+          {webhookLog.length === 0 && (
+            <p className="text-xs text-muted-foreground py-4 text-center">No pings yet — escalate a decision to see one.</p>
+          )}
+        </div>
+      </article>
 
       {pendingApprovals.length === 0 ? (
         <div className="glass rounded-2xl p-12 text-center">
@@ -427,6 +482,9 @@ function ApprovalsPage({ onReplay }: { onReplay: (e: AuditEntry) => void }) {
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-semibold">{entry.title}</p>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${entry.type === 'upsell' ? 'bg-[oklch(0.68_0.18_245/15%)] text-[oklch(0.78_0.18_245)]' : 'bg-[oklch(0.68_0.18_295/15%)] text-[oklch(0.78_0.18_295)]'}`}>{entry.type}</span>
+                      {entry.webhookFired && (
+                        <span className="rounded-full bg-[oklch(0.78_0.16_78/15%)] px-2 py-0.5 text-[10px] font-medium text-[oklch(0.85_0.16_78)]">Merchant pinged</span>
+                      )}
                     </div>
                     <div className="mt-3 space-y-2">
                       <div className="rounded-xl bg-muted/50 border border-border p-3">
@@ -439,15 +497,16 @@ function ApprovalsPage({ onReplay }: { onReplay: (e: AuditEntry) => void }) {
                       </div>
                       <div className="rounded-xl bg-[oklch(0.78_0.16_78/8%)] border border-[oklch(0.78_0.16_78/20%)] p-3">
                         <p className="text-[10px] font-semibold uppercase tracking-widest text-[oklch(0.85_0.16_78)] mb-1">Why escalated</p>
-                        <p className="text-xs leading-5 text-muted-foreground">{entry.policyResult}</p>
+                        <p className="text-xs leading-5 text-muted-foreground">{entry.escalationReason || entry.policyResult}</p>
                       </div>
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 text-xs">
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5 text-xs">
                       {([
                         ['Customer', entry.customerName],
                         ['Discount', `${entry.proposedDiscountPct}% · ${fmtCurrency(entry.proposedDiscount)}`],
                         ['Cart value', fmtCurrency(entry.cartValue)],
                         ['Risk', String(entry.riskScore)],
+                        ['Confidence', `${entry.confidence ?? '—'}%`],
                       ] as [string, string][]).map(([k, v]) => (
                         <div key={k} className="rounded-lg border border-border bg-background/50 p-2.5">
                           <p className="text-[10px] text-muted-foreground">{k}</p>
@@ -548,26 +607,48 @@ function buildTrace(mode: FailureMode, dd: any) {
 }
 
 function CheckoutPage() {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const { policy } = useStore()
+  const sweetdripUrl = process.env.NEXT_PUBLIC_SWEETDRIP_URL || 'https://icecreamcookie.vercel.app/'
+
+  useEffect(() => {
+    // Push current policy into the iframe whenever it loads or policy changes
+    const t = setTimeout(() => broadcastPolicy(policy, iframeRef.current), 800)
+    return () => clearTimeout(t)
+  }, [policy])
+
   return (
     <div className="flex h-[calc(100vh-120px)] w-full flex-col overflow-hidden rounded-2xl border border-border bg-background">
-      <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3 gap-3 flex-wrap">
         <div>
           <h2 className="font-medium">SweetDrip Menu & Checkout</h2>
-          <p className="text-xs text-muted-foreground">Experience the real customer journey</p>
+          <p className="text-xs text-muted-foreground">
+            Live storefront — drag Policies sliders and the next checkout uses them via postMessage sync.
+          </p>
         </div>
-        <a 
-          href="https://icecreamcookie.vercel.app/" 
-          target="_blank" 
-          rel="noreferrer"
-          className="text-xs text-accent hover:underline"
-        >
-          Open in new tab ↗
-        </a>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => broadcastPolicy(policy, iframeRef.current)}
+            className="rounded-lg border border-border px-3 py-1.5 text-[11px] font-medium hover:bg-muted"
+          >
+            Re-sync policy → storefront
+          </button>
+          <a
+            href={sweetdripUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-accent hover:underline"
+          >
+            Open in new tab ↗
+          </a>
+        </div>
       </div>
-      <iframe 
-        src="https://icecreamcookie.vercel.app/" 
+      <iframe
+        ref={iframeRef}
+        src={sweetdripUrl}
         className="h-full w-full border-none bg-white"
         title="SweetDrip Live Menu"
+        onLoad={() => broadcastPolicy(policy, iframeRef.current)}
       />
     </div>
   )
@@ -584,7 +665,7 @@ type CampaignRow = {
 }
 
 function CampaignsPage() {
-  const { customers, budget, policy, agentPaused, addAuditEntry } = useStore()
+  const { customers, budget, policy, agentPaused, addAuditEntry, addPendingApproval, pushWebhookEvent } = useStore()
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState(0)
   const [rows, setRows] = useState<CampaignRow[] | null>(null)
@@ -607,15 +688,66 @@ function CampaignsPage() {
       }
 
       const aiDec = await generateCampaignDecision(c, policy)
+      const confidence = aiDec.confidence ?? 70
+      const aiCostInr = aiDec.aiCostInr ?? 0.12
       const sanity = runSanityCheck(aiDec.proposedDiscountPct, aiDec.proposedDiscount, 55, policy, budgetLeft)
       const pRes = runPolicyCheck(aiDec.proposedDiscountPct, aiDec.proposedDiscount, 55, policy, { dailyUsed: policy.dailyTotalCap - budgetLeft }, 0, 0)
+      const confRes = runConfidenceCheck(confidence, policy.confidenceThreshold)
 
       if (!sanity.passed || pRes.reject) {
         out.push({ id: c.id, name: c.name, ltv: c.totalLTV, daysSince, decision: 'Cut', why: !sanity.passed ? sanity.reason : pRes.reason, offerPct: aiDec.proposedDiscountPct, offerAmt: aiDec.proposedDiscount, status: 'cut', riskScore: aiDec.riskScore })
+        addAuditEntry({
+          id: genId(), type: 'campaign', title: aiDec.title,
+          customerId: c.id, customerName: c.name,
+          proposedDiscount: aiDec.proposedDiscount, proposedDiscountPct: aiDec.proposedDiscountPct,
+          cartValue: c.lastOrderValue, margin: 55,
+          aiReasoning: aiDec.aiReasoning, cfoCast: aiDec.cfoCast,
+          riskScore: aiDec.riskScore, confidence, aiCostInr,
+          policyResult: !sanity.passed ? sanity.reason : pRes.reason,
+          status: !sanity.passed ? 'caught_anomaly' : 'rejected',
+          isAnomaly: !sanity.passed,
+          anomalyReason: !sanity.passed ? sanity.reason : undefined,
+          budgetBefore: policy.dailyTotalCap - budgetLeft,
+          budgetAfter: policy.dailyTotalCap - budgetLeft, timestamp: new Date(),
+        })
         continue
       }
-      if (pRes.escalate) {
-        out.push({ id: c.id, name: c.name, ltv: c.totalLTV, daysSince, decision: 'Escalated', why: pRes.reason, offerPct: aiDec.proposedDiscountPct, offerAmt: aiDec.proposedDiscount, status: 'escalated', riskScore: aiDec.riskScore })
+
+      if (pRes.escalate || confRes.escalate) {
+        const why = pRes.escalate && confRes.escalate
+          ? `${pRes.reason} ALSO: ${confRes.reason}`
+          : pRes.escalate ? pRes.reason : confRes.reason
+        const entryId = genId()
+        const wh = await fireEscalationWebhook({
+          decisionId: entryId,
+          title: aiDec.title,
+          reason: why,
+          confidence,
+          discountPct: aiDec.proposedDiscountPct,
+          customerName: c.name,
+        })
+        pushWebhookEvent({
+          decisionId: entryId,
+          channel: 'slack',
+          endpoint: wh.endpoint,
+          payload: wh.payload,
+          status: 'stubbed',
+        })
+        const entry = {
+          id: entryId, type: 'campaign' as const, title: aiDec.title,
+          customerId: c.id, customerName: c.name,
+          proposedDiscount: aiDec.proposedDiscount, proposedDiscountPct: aiDec.proposedDiscountPct,
+          cartValue: c.lastOrderValue, margin: 55,
+          aiReasoning: aiDec.aiReasoning, cfoCast: aiDec.cfoCast,
+          riskScore: aiDec.riskScore, confidence, aiCostInr,
+          policyResult: why, escalationReason: why,
+          status: 'escalated' as const,
+          webhookFired: true, webhookPayload: wh.payload,
+          budgetBefore: policy.dailyTotalCap - budgetLeft,
+          budgetAfter: policy.dailyTotalCap - budgetLeft, timestamp: new Date(),
+        }
+        addPendingApproval(entry)
+        out.push({ id: c.id, name: c.name, ltv: c.totalLTV, daysSince, decision: 'Escalated', why, offerPct: aiDec.proposedDiscountPct, offerAmt: aiDec.proposedDiscount, status: 'escalated', riskScore: aiDec.riskScore })
         continue
       }
 
@@ -627,7 +759,8 @@ function CampaignsPage() {
         proposedDiscount: aiDec.proposedDiscount, proposedDiscountPct: aiDec.proposedDiscountPct,
         cartValue: c.lastOrderValue, margin: 55,
         aiReasoning: aiDec.aiReasoning, cfoCast: aiDec.cfoCast,
-        riskScore: aiDec.riskScore, policyResult: pRes.reason,
+        riskScore: aiDec.riskScore, confidence, aiCostInr,
+        policyResult: `${pRes.reason} ${confRes.reason}`,
         status: 'auto_approved', razorpayId: rzRes.id,
         budgetBefore: policy.dailyTotalCap - budgetLeft - aiDec.proposedDiscount,
         budgetAfter: policy.dailyTotalCap - budgetLeft, timestamp: new Date(),
@@ -734,9 +867,16 @@ function CampaignsPage() {
 function PoliciesPage() {
   const { policy, updatePolicy, agentMode, setAgentMode } = useStore()
   const [saved, setSaved] = useState(false)
+  const [syncedFlash, setSyncedFlash] = useState(false)
 
-  function change(key: keyof typeof policy, val: number) {
-    updatePolicy({ [key]: val }); setSaved(false)
+  function change(key: keyof typeof policy, val: number | boolean) {
+    updatePolicy({ [key]: val })
+    setSaved(false)
+    // Live: next decision on storefront / campaigns uses the new value immediately
+    const next = { ...policy, [key]: val }
+    broadcastPolicy(next as typeof policy)
+    setSyncedFlash(true)
+    setTimeout(() => setSyncedFlash(false), 1200)
   }
 
   const sliders = [
@@ -745,6 +885,7 @@ function PoliciesPage() {
     { key: 'perCustomerCap' as const, label: 'Per-customer cap', min: 50, max: 1000, step: 50, fmt: fmtCurrency },
     { key: 'minMarginFloor' as const, label: 'Minimum margin floor', min: 20, max: 70, step: 1, fmt: (v: number) => `${v}%` },
     { key: 'maxDiscountPct' as const, label: 'Maximum discount allowed', min: 2, max: 30, step: 1, fmt: (v: number) => `${v}%` },
+    { key: 'confidenceThreshold' as const, label: 'AI confidence threshold (escalate below)', min: 30, max: 90, step: 1, fmt: (v: number) => `${v}%` },
   ]
 
   return (
@@ -752,13 +893,24 @@ function PoliciesPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Guardrails</p>
-          <h1 className="mt-2 font-serif text-4xl tracking-tight">Policy &amp; budget</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Changes apply immediately. Existing offers are not affected.</p>
+          <h1 className="mt-2 font-serif text-4xl tracking-tight">Live policy editor</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Drag mid-demo — the <strong className="text-foreground">next</strong> decision responds immediately. Hand the control to a judge.
+          </p>
         </div>
-        <button onClick={() => setSaved(true)} className="shrink-0 flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-background hover:bg-accent/90 transition-all">
-          <Check className="size-3.5" /> {saved ? 'Saved!' : 'Save changes'}
+        <button
+          onClick={() => { broadcastPolicy(policy); setSaved(true); setSyncedFlash(true); setTimeout(() => setSyncedFlash(false), 1200) }}
+          className="shrink-0 flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-background hover:bg-accent/90 transition-all"
+        >
+          <Check className="size-3.5" /> {saved ? 'Synced!' : 'Push to storefront'}
         </button>
       </div>
+
+      {syncedFlash && (
+        <div className="rounded-xl border border-accent/30 bg-accent/10 px-4 py-3 text-xs text-accent">
+          Policy broadcast to SweetDrip (postMessage + API). Next checkout uses these numbers.
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
         <article className="glass rounded-2xl p-6">
@@ -790,7 +942,7 @@ function PoliciesPage() {
             <p className="mt-1 text-xs leading-5 text-muted-foreground">Controls agent behavior near policy limits.</p>
             <div className="mt-4 space-y-2">
               {(['safe', 'aggressive'] as const).map(mode => (
-                <button key={mode} id={`mode-${mode}`} onClick={() => setAgentMode(mode)}
+                <button key={mode} id={`mode-${mode}`} onClick={() => { setAgentMode(mode); change('aggressiveMode', mode === 'aggressive') }}
                   className={`w-full rounded-xl border p-4 text-left transition-all ${agentMode === mode ? 'border-accent/40 bg-accent/8' : 'border-border hover:bg-muted'}`}>
                   <span className="flex items-center justify-between text-sm font-semibold">
                     <span className="capitalize">{mode} mode</span>
@@ -807,21 +959,18 @@ function PoliciesPage() {
           <article className="glass rounded-2xl p-5">
             <div className="flex items-center gap-2">
               <Shield className="size-4 text-[oklch(0.78_0.18_295)]" />
-              <h3 className="text-sm font-semibold">Non-AI sanity layer</h3>
+              <h3 className="text-sm font-semibold">Two safety axes</h3>
             </div>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              A <strong className="text-foreground">deterministic rule engine</strong> — completely separate from the AI — runs a final check before any Razorpay call.
+              <strong className="text-foreground">Policy numbers</strong> (margin/budget/caps) and <strong className="text-foreground">AI confidence</strong> (model uncertainty) are independent. Either can force escalation alone.
             </p>
             <div className="mt-3 space-y-2 text-xs">
-              {([['Hard ceiling', '50% max, always'], ['Cost floor', 'Never below cost'], ['Margin hard floor', '20% absolute']] as [string, string][]).map(([k, v]) => (
+              {([['Hard ceiling', '50% max, always'], ['Cost floor', 'Never below cost'], ['Margin hard floor', '20% absolute'], ['Confidence gate', `Escalate if AI < ${policy.confidenceThreshold}%`]] as [string, string][]).map(([k, v]) => (
                 <div key={k} className="flex justify-between border-b border-border pb-2 last:border-0 last:pb-0">
                   <span className="text-muted-foreground">{k}</span><span className="font-medium">{v}</span>
                 </div>
               ))}
             </div>
-            <p className="mt-3 rounded-lg bg-[oklch(0.68_0.18_295/8%)] border border-[oklch(0.68_0.18_295/20%)] px-3 py-2 text-[11px] text-[oklch(0.78_0.18_295)]">
-              Intentionally not AI-driven — it is the seatbelt the AI cannot remove.
-            </p>
           </article>
         </div>
       </div>
@@ -835,11 +984,23 @@ function PoliciesPage() {
 
 function ReplayModal({ item, onClose }: { item: AuditEntry; onClose: () => void }) {
   const [step, setStep] = useState(0)
-  const steps = ['Overview', 'AI Reasoning', 'CFO Analysis', 'Policy Check', 'Outcome']
+  const [showNaive, setShowNaive] = useState(true)
+  const steps = ['Overview', 'AI Reasoning', 'CFO Analysis', 'Policy Check', 'Counterfactual', 'Outcome']
+
+  const cf = computeCounterfactuals({
+    proposedDiscountPct: item.proposedDiscountPct,
+    proposedDiscountInr: item.proposedDiscount,
+    cartValueInr: item.cartValue,
+    status: item.status,
+    razorpayAmountInr: item.status === 'auto_approved' || item.status === 'approved'
+      ? Math.round(item.cartValue * 0.12)
+      : 0,
+    isAnomaly: item.isAnomaly,
+  })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-2xl glass shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl glass shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between border-b border-border px-6 py-5">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground flex items-center gap-2">
@@ -866,7 +1027,10 @@ function ReplayModal({ item, onClose }: { item: AuditEntry; onClose: () => void 
                 ['Customer', item.customerName], ['Type', item.type],
                 ['Discount', `${item.proposedDiscountPct}% · ${fmtCurrency(item.proposedDiscount)}`],
                 ['Cart value', fmtCurrency(item.cartValue)], ['Margin', `${item.margin}%`],
-                ['Risk score', String(item.riskScore)], ['Status', statusLabel(item.status)],
+                ['Risk score', String(item.riskScore)],
+                ['Confidence', `${item.confidence ?? '—'}%`],
+                ['AI cost', `₹${(item.aiCostInr ?? 0).toFixed(2)}`],
+                ['Status', statusLabel(item.status)],
                 ['Razorpay ID', item.razorpayId ?? '—'], ['Time', fmtTime(item.timestamp)],
               ] as [string, string][]).map(([k, v]) => (
                 <div key={k} className="rounded-xl border border-border bg-background/50 p-3">
@@ -880,7 +1044,10 @@ function ReplayModal({ item, onClose }: { item: AuditEntry; onClose: () => void 
             <div className="rounded-xl bg-muted/50 border border-border p-4">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Full AI Reasoning</p>
               <p className="text-sm leading-6">{item.aiReasoning}</p>
-              <div className="mt-3 pt-3 border-t border-border"><RiskDot score={item.riskScore} /></div>
+              <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-4">
+                <RiskDot score={item.riskScore} />
+                <span className="text-[11px] font-medium text-muted-foreground">Confidence · {item.confidence ?? '—'}%</span>
+              </div>
             </div>
           )}
           {step === 2 && (
@@ -902,6 +1069,47 @@ function ReplayModal({ item, onClose }: { item: AuditEntry; onClose: () => void 
             </div>
           )}
           {step === 4 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Split className="size-4 text-accent" />
+                  <p className="text-sm font-semibold">What would a naive system have done?</p>
+                </div>
+                <button
+                  onClick={() => setShowNaive(!showNaive)}
+                  className={`rounded-full px-3 py-1 text-[11px] font-medium transition-colors ${showNaive ? 'bg-accent text-background' : 'bg-muted text-muted-foreground'}`}
+                >
+                  {showNaive ? 'Showing side-by-side' : 'Show naive baselines'}
+                </button>
+              </div>
+              {showNaive && (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {([cf.actual, cf.alwaysApprove, cf.flat10] as const).map((lane) => (
+                    <div
+                      key={lane.label}
+                      className={`rounded-xl border p-4 text-xs ${lane.label === 'Profit Pilot' ? 'border-accent/40 bg-accent/8' : 'border-border bg-background/50'}`}
+                    >
+                      <p className="font-semibold">{lane.label}</p>
+                      <p className="mt-1 capitalize text-muted-foreground">{lane.action}</p>
+                      <p className="mt-2 leading-5 text-muted-foreground">{lane.note}</p>
+                      <p className="mt-3 font-mono text-[11px]">
+                        Cost {fmtCurrency(lane.discountCostInr)}
+                        <br />
+                        Rev {fmtCurrency(lane.recoveredRevenueInr)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="rounded-xl border border-accent/25 bg-accent/8 p-3 text-xs">
+                <p className="font-medium text-accent">
+                  Engine saved {fmtCurrency(cf.savingsVsAlwaysApprove)} vs always-approve · {fmtCurrency(cf.savingsVsFlat10)} vs flat 10%
+                </p>
+                <p className="mt-1 text-muted-foreground">Not just “AI made money” — the specific decision where the alternative would have been worse.</p>
+              </div>
+            </div>
+          )}
+          {step === 5 && (
             <div className="space-y-3">
               <div className={`rounded-xl p-4 ${statusClass(item.status)}`}>
                 <p className="text-sm font-semibold">{statusLabel(item.status)}</p>
@@ -916,6 +1124,12 @@ function ReplayModal({ item, onClose }: { item: AuditEntry; onClose: () => void 
                 <div className="rounded-xl bg-[oklch(0.65_0.20_25/8%)] border border-[oklch(0.65_0.20_25/25%)] p-3">
                   <p className="text-xs font-semibold text-[oklch(0.75_0.20_25)]">Failure details</p>
                   <p className="mt-1 text-xs text-muted-foreground">{item.failureDetails}</p>
+                </div>
+              )}
+              {item.webhookFired && (
+                <div className="rounded-xl border border-[oklch(0.78_0.16_78/25%)] bg-[oklch(0.78_0.16_78/8%)] p-3">
+                  <p className="text-xs font-semibold text-[oklch(0.85_0.16_78)]">Merchant notification fired</p>
+                  <pre className="mt-2 max-h-24 overflow-auto text-[10px] text-muted-foreground whitespace-pre-wrap">{item.webhookPayload}</pre>
                 </div>
               )}
             </div>

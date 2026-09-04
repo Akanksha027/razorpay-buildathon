@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { estimateGeminiCostInr } from '@/lib/engine'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
@@ -37,19 +38,24 @@ You MUST respond with ONLY a valid JSON object (no markdown fencing, no extra te
   "bundleDescription": "<short name for the bundle, e.g. 'Sock bundle add-on'>",
   "aiReasoning": "<2-3 sentence reasoning for the discount, referencing customer data and margin>",
   "cfoCast": "<1-2 sentence CFO-style cost-benefit analysis with numbers>",
-  "riskScore": <number between 5 and 95>
+  "riskScore": <number between 5 and 95>,
+  "confidence": <number between 20 and 98 — how sure YOU are this is the right offer. Lower for sparse history or edge cases.>
 }
 
-Think like a smart, cautious sales agent. Keep discounts reasonable. Reference actual numbers from the context.`
+Think like a smart, cautious sales agent. Keep discounts reasonable. Reference actual numbers from the context.
+Be honest about confidence — do not always return high confidence.`
 
     const result = await model.generateContent(prompt)
     const text = result.response.text()
+    const usage = result.response.usageMetadata
+    const aiCostInr = estimateGeminiCostInr(
+      usage?.promptTokenCount || 900,
+      usage?.candidatesTokenCount || 280
+    )
 
-    // Parse the JSON from the response, stripping any markdown fencing
     const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     const parsed = JSON.parse(cleaned)
 
-    // Compute the actual discount amount
     const proposedDiscount = Math.round(cartValue * parsed.proposedDiscountPct / 100)
 
     return NextResponse.json({
@@ -61,15 +67,17 @@ Think like a smart, cautious sales agent. Keep discounts reasonable. Reference a
         aiReasoning: parsed.aiReasoning,
         cfoCast: parsed.cfoCast,
         riskScore: parsed.riskScore,
+        confidence: Math.min(98, Math.max(20, Number(parsed.confidence) || 70)),
         bundleDescription: parsed.bundleDescription,
-      }
+        aiCostInr,
+      },
+      usage: { aiCostInr },
     })
   } catch (error: any) {
     console.error('Gemini upsell error:', error)
     return NextResponse.json({
       success: false,
       error: error.message || 'AI reasoning failed',
-      // Return a sensible fallback so the UI doesn't break
       decision: {
         proposedDiscountPct: 8,
         proposedDiscount: Math.round(3530 * 0.08),
@@ -77,7 +85,9 @@ Think like a smart, cautious sales agent. Keep discounts reasonable. Reference a
         aiReasoning: 'AI service unavailable. Falling back to conservative 8% bundle discount based on historical average.',
         cfoCast: 'Fallback offer: ₹282 discount. Conservative estimate based on segment averages.',
         riskScore: 25,
+        confidence: 35,
         bundleDescription: 'Standard bundle offer',
+        aiCostInr: 0,
       }
     })
   }
