@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       (Date.now() - new Date(customer.lastOrderDate).getTime()) / 86400000
     )
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' })
 
     const prompt = `You are Profit Pilot, an AI win-back campaign agent for an e-commerce merchant.
 

@@ -16,6 +16,7 @@ import {
 } from '../../lib/engine'
 import { broadcastPolicy, fireEscalationWebhook } from '../../lib/policySync'
 import { getSessionName, logoutSession } from '../../lib/auth'
+import MerchantCopilot from '../../components/MerchantCopilot'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -223,6 +224,7 @@ export default function Dashboard() {
       </div>
 
       {replayItem && <ReplayModal item={replayItem} onClose={() => setReplayItem(null)} />}
+      <MerchantCopilot />
     </div>
   )
 }
@@ -232,11 +234,29 @@ export default function Dashboard() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function OverviewPage({ onReplay }: { onReplay: (e: AuditEntry) => void }) {
-  const { revenueRecovered, aiCostSpent, totalDecisions, totalAutoApproved, totalEscalated, budget, policy } = useStore()
+  const { revenueRecovered, aiCostSpent, totalDecisions, totalAutoApproved, totalEscalated, budget, policy, auditLog } = useStore()
   const [displayName, setDisplayName] = useState('Merchant')
   const approvalRate = totalDecisions ? Math.round((totalAutoApproved / totalDecisions) * 100) : 0
   const net = revenueRecovered - aiCostSpent
   const roi = aiCostSpent > 0 ? Math.round(revenueRecovered / aiCostSpent) : 0
+
+  const cfTotals = auditLog.slice(0, 40).reduce(
+    (acc, item) => {
+      const cf = computeCounterfactuals({
+        proposedDiscountPct: item.proposedDiscountPct,
+        proposedDiscountInr: item.proposedDiscount,
+        cartValueInr: item.cartValue,
+        upsellOriginalInr: Math.round((item.proposedDiscount / Math.max(1, item.proposedDiscountPct)) * 100),
+        status: item.status,
+        razorpayAmountInr: item.status === 'auto_approved' || item.status === 'approved' ? item.cartValue : 0,
+        isAnomaly: item.isAnomaly,
+      })
+      acc.vsAlways += cf.savingsVsAlwaysApprove
+      acc.vsFlat += cf.savingsVsFlat10
+      return acc
+    },
+    { vsAlways: 0, vsFlat: 0 }
+  )
 
   useEffect(() => {
     setDisplayName(getSessionName())
@@ -259,6 +279,28 @@ function OverviewPage({ onReplay }: { onReplay: (e: AuditEntry) => void }) {
           Your agent has made <strong className="text-foreground">{totalDecisions} decisions</strong> today.
         </p>
       </div>
+
+      <article className="glass rounded-2xl border border-accent/20 bg-accent/5 p-5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">Before / after · counterfactuals</p>
+        <h2 className="mt-1 font-semibold text-lg">Profit Pilot vs naive systems</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Same decisions replayed as always-approve and flat 10% — the delta is what your guardrails saved.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl bg-background/60 p-3">
+            <p className="text-[10px] uppercase text-muted-foreground">Saved vs always-approve</p>
+            <p className="mt-1 font-mono text-xl font-bold text-accent">{fmtCurrency(Math.round(cfTotals.vsAlways))}</p>
+          </div>
+          <div className="rounded-xl bg-background/60 p-3">
+            <p className="text-[10px] uppercase text-muted-foreground">Saved vs flat 10%</p>
+            <p className="mt-1 font-mono text-xl font-bold">{fmtCurrency(Math.round(cfTotals.vsFlat))}</p>
+          </div>
+          <div className="rounded-xl bg-background/60 p-3">
+            <p className="text-[10px] uppercase text-muted-foreground">Net after Gemini</p>
+            <p className="mt-1 font-mono text-xl font-bold">{fmtCurrency(Math.round(net))}</p>
+          </div>
+        </div>
+      </article>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="AI-driven revenue today" value={fmtCurrency(revenueRecovered)} change={`+${((revenueRecovered / 36000 - 1) * 100).toFixed(1)}% vs yesterday`} icon={<CircleDollarSign className="size-4" />} trend="up" />
@@ -319,12 +361,18 @@ function StatCard({ label, value, change, icon, trend }: { label: string; value:
 }
 
 function AgentHealth() {
-  const { agentPaused } = useStore()
+  const { agentPaused, auditLog, totalAutoApproved, totalEscalated } = useStore()
   const [hb, setHb] = useState(12)
   useEffect(() => {
     const t = setInterval(() => setHb(Math.floor(Math.random() * 20) + 5), 5000)
     return () => clearInterval(t)
   }, [])
+  const blocked = auditLog.filter(e => e.status === 'rejected' || e.status === 'caught_anomaly').length
+  const trust = Math.max(
+    12,
+    Math.min(98, 72 + totalAutoApproved * 2 - totalEscalated - blocked * 4 + (agentPaused ? -8 : 0))
+  )
+  const dash = Math.round((trust / 100) * 163)
   return (
     <article className="glass rounded-2xl p-5">
       <div className="flex items-center gap-2 border-b border-border pb-4">
@@ -339,16 +387,18 @@ function AgentHealth() {
           <svg className="absolute inset-0" viewBox="0 0 64 64">
             <circle cx="32" cy="32" r="26" fill="none" stroke="oklch(0.22 0.016 265)" strokeWidth="6" />
             <circle cx="32" cy="32" r="26" fill="none"
-              stroke={agentPaused ? 'oklch(0.65 0.20 25)' : 'oklch(0.72 0.18 142)'}
-              strokeWidth="6" strokeDasharray={agentPaused ? '40 163' : '155 163'}
+              stroke={agentPaused ? 'oklch(0.65 0.20 25)' : trust >= 70 ? 'oklch(0.72 0.18 142)' : trust >= 40 ? 'oklch(0.78 0.16 78)' : 'oklch(0.65 0.20 25)'}
+              strokeWidth="6" strokeDasharray={`${agentPaused ? 40 : dash} 163`}
               strokeLinecap="round" transform="rotate(-90 32 32)"
               style={{ transition: 'stroke-dasharray 1s ease' }} />
           </svg>
-          <span className="font-mono text-xs font-bold">{agentPaused ? '--' : '98%'}</span>
+          <span className="font-mono text-xs font-bold">{agentPaused ? '--' : `${trust}`}</span>
         </div>
         <div>
-          <p className="text-sm font-medium">{agentPaused ? 'Paused by merchant' : 'Operating normally'}</p>
-          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{agentPaused ? 'No decisions being made.' : 'All payment events syncing.'}</p>
+          <p className="text-sm font-medium">{agentPaused ? 'Paused by merchant' : 'Trust score (live)'}</p>
+          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+            {agentPaused ? 'No decisions being made.' : '+ safe approvals · − blocks & escalations'}
+          </p>
         </div>
       </div>
       <div className="mt-5 space-y-2.5 border-t border-border pt-4 text-xs">
@@ -677,9 +727,10 @@ function CheckoutPage() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 type CampaignRow = {
+interface CampaignRow {
   id: string; name: string; ltv: number; daysSince: number
   decision: string; why: string; offerPct: number; offerAmt: number
-  status: string; razorpayId?: string; riskScore: number
+  status: string; razorpayId?: string; shortUrl?: string; notifyId?: string; riskScore: number
 }
 
 function CampaignsPage() {
@@ -771,6 +822,25 @@ function CampaignsPage() {
 
       const rzRes = await createRazorpayOrder(aiDec.proposedDiscount, 'payment_link', c.name, c.id, `Win-back: ${aiDec.proposedDiscountPct}% off for ${c.name}`)
       budgetLeft -= aiDec.proposedDiscount
+
+      let notifyId: string | undefined
+      if (rzRes.success && rzRes.shortUrl) {
+        try {
+          const nRes = await fetch('/api/notify/email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              customerName: c.name,
+              shortUrl: rzRes.shortUrl,
+              offerPct: aiDec.proposedDiscountPct,
+              channel: 'email',
+            }),
+          })
+          const nData = await nRes.json()
+          if (nData.success) notifyId = nData.id
+        } catch { /* stub optional */ }
+      }
+
       addAuditEntry({
         id: genId(), type: 'campaign', title: aiDec.title,
         customerId: c.id, customerName: c.name,
@@ -783,7 +853,13 @@ function CampaignsPage() {
         budgetBefore: policy.dailyTotalCap - budgetLeft - aiDec.proposedDiscount,
         budgetAfter: policy.dailyTotalCap - budgetLeft, timestamp: new Date(),
       })
-      out.push({ id: c.id, name: c.name, ltv: c.totalLTV, daysSince, decision: 'Targeted', why: aiDec.aiReasoning.slice(0, 75) + '…', offerPct: aiDec.proposedDiscountPct, offerAmt: aiDec.proposedDiscount, status: 'sent', razorpayId: rzRes.id, riskScore: aiDec.riskScore })
+      out.push({
+        id: c.id, name: c.name, ltv: c.totalLTV, daysSince,
+        decision: 'Targeted', why: aiDec.aiReasoning.slice(0, 75) + '…',
+        offerPct: aiDec.proposedDiscountPct, offerAmt: aiDec.proposedDiscount,
+        status: 'sent', razorpayId: rzRes.id, shortUrl: rzRes.shortUrl, notifyId,
+        riskScore: aiDec.riskScore,
+      })
     }
 
     setRows(out); setRunning(false)
@@ -839,7 +915,7 @@ function CampaignsPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[780px] text-left text-xs">
                 <thead className="border-b border-border bg-muted/30 text-muted-foreground">
-                  <tr>{['Customer', 'LTV', 'Days since', 'Decision', 'Offer', 'Reasoning', 'Status'].map(h => (
+                  <tr>{['Customer', 'LTV', 'Days since', 'Decision', 'Offer', 'Reasoning', 'Payment link'].map(h => (
                     <th key={h} className="px-4 py-3 font-medium">{h}</th>
                   ))}</tr>
                 </thead>
@@ -857,6 +933,19 @@ function CampaignsPage() {
                           {r.status === 'sent' ? 'Sent' : r.status === 'cut' ? 'Cut off' : r.status === 'escalated' ? 'Escalated' : 'Skipped'}
                         </span>
                         {r.razorpayId && <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{r.razorpayId}</p>}
+                        {r.shortUrl && (
+                          <a
+                            href={r.shortUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1 inline-flex text-[10px] font-semibold text-accent underline-offset-2 hover:underline"
+                          >
+                            Open Payment Link ↗
+                          </a>
+                        )}
+                        {r.notifyId && (
+                          <p className="mt-0.5 text-[9px] text-muted-foreground">Email stub {r.notifyId}</p>
+                        )}
                       </td>
                     </tr>
                   ))}
