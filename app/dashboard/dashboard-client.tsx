@@ -8,13 +8,14 @@ import {
   Sparkles, Target, Users, X, Zap, Shield,
   WifiOff, Bell, Split,
 } from 'lucide-react'
-import { useStore, type AuditEntry, type DecisionStatus, MOCK_CUSTOMERS } from '../lib/store'
+import { useStore, type AuditEntry, type DecisionStatus, MOCK_CUSTOMERS } from '../../lib/store'
 import {
   runSanityCheck, runPolicyCheck, runConfidenceCheck, computeCounterfactuals,
   generateUpsellDecision, generateCampaignDecision,
   createRazorpayOrder, setSimulateFailure,
-} from '../lib/engine'
-import { broadcastPolicy, fireEscalationWebhook } from '../lib/policySync'
+} from '../../lib/engine'
+import { broadcastPolicy, fireEscalationWebhook } from '../../lib/policySync'
+import { getSessionName, logoutSession } from '../../lib/auth'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -169,9 +170,18 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="border-t border-border p-3">
-          <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
-            <Settings2 className="size-4" /> Workspace settings
+        <div className="border-t border-border p-3 space-y-1">
+          <a href="/" className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+            <LayoutDashboard className="size-4" /> Marketing site
+          </a>
+          <button
+            onClick={() => {
+              logoutSession()
+              window.location.href = '/login'
+            }}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <Power className="size-4" /> Log out
           </button>
         </div>
       </aside>
@@ -223,9 +233,17 @@ export default function Dashboard() {
 
 function OverviewPage({ onReplay }: { onReplay: (e: AuditEntry) => void }) {
   const { revenueRecovered, aiCostSpent, totalDecisions, totalAutoApproved, totalEscalated, budget, policy } = useStore()
+  const [displayName, setDisplayName] = useState('Merchant')
   const approvalRate = totalDecisions ? Math.round((totalAutoApproved / totalDecisions) * 100) : 0
   const net = revenueRecovered - aiCostSpent
   const roi = aiCostSpent > 0 ? Math.round(revenueRecovered / aiCostSpent) : 0
+
+  useEffect(() => {
+    setDisplayName(getSessionName())
+  }, [])
+
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
   return (
     <div className="space-y-8">
@@ -235,7 +253,7 @@ function OverviewPage({ onReplay }: { onReplay: (e: AuditEntry) => void }) {
           {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </p>
         <h1 className="font-serif text-4xl tracking-tight sm:text-5xl">
-          Good evening, <span className="gradient-text">Northstar.</span>
+          {greeting}, <span className="gradient-text">{displayName}.</span>
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Your agent has made <strong className="text-foreground">{totalDecisions} decisions</strong> today.

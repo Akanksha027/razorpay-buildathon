@@ -19,7 +19,7 @@
   --color-ring: var(--ring);
   --font-sans: var(--font-geist), 'Geist Fallback';
   --font-mono: var(--font-geist), 'Geist Mono Fallback';
-  --font-serif: var(--font-instrument), Georgia, serif;
+  --font-serif: var(--font-instrument-serif), 'Instrument Serif', Georgia, serif;
 }
 
 :root {

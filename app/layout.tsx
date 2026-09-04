@@ -1,26 +1,31 @@
 import { Analytics } from '@vercel/analytics/next'
-import { Geist } from 'next/font/google'
+import { Geist, Instrument_Serif } from 'next/font/google'
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-geist' })
+const instrumentSerif = Instrument_Serif({
+  subsets: ['latin'],
+  weight: '400',
+  variable: '--font-instrument-serif',
+})
 
 export const metadata: Metadata = {
   title: 'Profit Pilot — AI Sales Growth Agent',
-  description: 'Real-time AI upsell engine + autonomous campaign agent for merchants. Every financial decision is bounded, explainable, and auditable.',
-  keywords: ['AI sales', 'upsell engine', 'campaign automation', 'Razorpay', 'merchant tools'],
+  description:
+    'AI upsells and win-back campaigns for merchants, bounded by non-AI policy checks, confidence escalation, and Razorpay payments. Log in to the dashboard.',
+  keywords: ['AI sales', 'upsell engine', 'campaign automation', 'Razorpay', 'Profit Pilot'],
 }
 
 export const viewport: Viewport = {
-  colorScheme: 'dark',
-  themeColor: '#0e1117',
+  themeColor: '#F7F5F3',
   userScalable: false,
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`bg-background ${geist.variable}`}>
-      <body className="antialiased">
+    <html lang="en" className={`${geist.variable} ${instrumentSerif.variable}`}>
+      <body className="antialiased font-sans">
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
