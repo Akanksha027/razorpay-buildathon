@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { useStore } from '../../lib/store'
-import { broadcastPolicy } from '../../lib/policySync'
+import { useStore } from '../lib/store'
+import { broadcastPolicy } from '../lib/policySync'
 import { MessageSquare, Send } from 'lucide-react'
 
 type Msg = { role: 'user' | 'agent'; text: string }

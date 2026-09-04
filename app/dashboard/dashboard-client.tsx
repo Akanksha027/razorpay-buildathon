@@ -726,7 +726,6 @@ function CheckoutPage() {
 // Campaign Agent
 // ═══════════════════════════════════════════════════════════════════════════════
 
-type CampaignRow = {
 interface CampaignRow {
   id: string; name: string; ltv: number; daysSince: number
   decision: string; why: string; offerPct: number; offerAmt: number
