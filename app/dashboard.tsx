@@ -548,162 +548,27 @@ function buildTrace(mode: FailureMode, dd: any) {
 }
 
 function CheckoutPage() {
-  const { agentPaused, budget, policy, addAuditEntry } = useStore()
-  const [simRunning, setSimRunning] = useState(false)
-  const [simDone, setSimDone] = useState(false)
-  const [failMode, setFailMode] = useState<FailureMode>('none')
-  const [traceLines, setTraceLines] = useState<{ text: string; cls: string }[]>([])
-  const [visible, setVisible] = useState(0)
-  const [dd, setDd] = useState<any>(null)
-
-  async function runSim(fm: FailureMode) {
-    if (agentPaused || simRunning) return
-    setFailMode(fm); setSimRunning(true); setSimDone(false)
-    setTraceLines([]); setVisible(0); setDd(null)
-
-    const customer = MOCK_CUSTOMERS[0]
-    const budgetRemaining = policy.dailyTotalCap - budget.dailyUsed
-    const aiDec = await generateUpsellDecision(customer, policy, 3530, 62)
-
-    if (fm === 'bad_ai') { aiDec.proposedDiscountPct = 75; aiDec.proposedDiscount = Math.round(3530 * 0.75) }
-
-    const sanity = runSanityCheck(aiDec.proposedDiscountPct, aiDec.proposedDiscount, 62, policy, budgetRemaining)
-    let finalStatus: DecisionStatus = 'auto_approved'
-    let razId: string | undefined
-    const data: any = { pct: aiDec.proposedDiscountPct, discount: aiDec.proposedDiscount, postMargin: 62 - aiDec.proposedDiscountPct, floor: policy.minMarginFloor, headroom: budgetRemaining }
-
-    if (fm === 'api_failure') {
-      setSimulateFailure(true)
-      const res = await createRazorpayOrder(aiDec.proposedDiscount, 'order')
-      if (!res.success) { finalStatus = 'api_failure' } else { razId = res.id; data.razorpayId = razId }
-    } else if (fm === 'bad_ai') {
-      finalStatus = 'caught_anomaly'
-    } else {
-      const res = await createRazorpayOrder(aiDec.proposedDiscount, 'order')
-      razId = res.id; data.razorpayId = razId
-    }
-
-    setDd(data)
-    const lines = buildTrace(fm, data)
-    setTraceLines(lines)
-    for (let i = 0; i < lines.length; i++) {
-      await new Promise(r => setTimeout(r, 360))
-      setVisible(i + 1)
-    }
-
-    const entry: AuditEntry = {
-      id: genId(), type: 'upsell',
-      title: fm === 'api_failure' ? 'API failure during checkout — order held safely'
-        : fm === 'bad_ai' ? 'ANOMALY CAUGHT: 75% AI hallucination blocked by sanity layer'
-        : aiDec.title,
-      customerId: customer.id, customerName: customer.name,
-      proposedDiscount: aiDec.proposedDiscount, proposedDiscountPct: aiDec.proposedDiscountPct,
-      cartValue: 3530, margin: 62,
-      aiReasoning: fm === 'bad_ai'
-        ? 'AI proposed an unrealistic 75% discount. Intercepted by the non-AI sanity layer before reaching Razorpay. Sanity layer detected the discount exceeds the absolute hard ceiling of 50%.'
-        : fm === 'api_failure'
-        ? 'Agent processed checkout correctly. Valid offer prepared. Razorpay API returned a gateway timeout. Agent held the order without charging the customer and scheduled a safe idempotent retry.'
-        : aiDec.aiReasoning,
-      cfoCast: aiDec.cfoCast, riskScore: fm === 'bad_ai' ? 100 : fm === 'api_failure' ? 30 : aiDec.riskScore,
-      policyResult: sanity.passed ? 'Sanity check passed. Policy check passed.' : sanity.reason,
-      status: finalStatus, razorpayId: razId,
-      budgetBefore: budget.dailyUsed, budgetAfter: finalStatus === 'auto_approved' ? budget.dailyUsed + aiDec.proposedDiscount : budget.dailyUsed,
-      timestamp: new Date(), isAnomaly: fm === 'bad_ai', anomalyReason: fm === 'bad_ai' ? sanity.reason : undefined,
-      failureDetails: fm === 'api_failure' ? 'Gateway timeout 4000ms. No charge created. Safe to retry.' : undefined,
-    }
-    addAuditEntry(entry)
-    setSimRunning(false); setSimDone(true)
-  }
-
   return (
-    <div className="space-y-8">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Sandbox</p>
-        <h1 className="mt-2 font-serif text-4xl tracking-tight">Live checkout simulation</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Trigger real agent decisions with live reasoning traces — including two failure demos.</p>
-      </div>
-      {agentPaused && (
-        <div className="flex items-center gap-3 rounded-xl border border-[oklch(0.65_0.20_25/40%)] bg-[oklch(0.65_0.20_25/8%)] px-4 py-3 text-sm text-[oklch(0.75_0.20_25)]">
-          <Power className="size-4" /> Agent is paused. Enable the kill switch to run simulations.
+    <div className="flex h-[calc(100vh-120px)] w-full flex-col overflow-hidden rounded-2xl border border-border bg-background">
+      <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
+        <div>
+          <h2 className="font-medium">SweetDrip Menu & Checkout</h2>
+          <p className="text-xs text-muted-foreground">Experience the real customer journey</p>
         </div>
-      )}
-      <div className="grid gap-5 lg:grid-cols-[1fr_1.2fr]">
-        {/* Cart */}
-        <article className="glass rounded-2xl p-6">
-          <div className="flex items-center justify-between border-b border-border pb-4">
-            <h3 className="font-semibold">Northstar Goods — Cart</h3>
-            <ShoppingCart className="size-4 text-muted-foreground" />
-          </div>
-          <div className="space-y-3 py-5">
-            {CART_ITEMS.map(item => (
-              <div key={item.sku} className="flex items-center justify-between rounded-xl border border-border bg-background/50 p-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
-                    <ShoppingCart className="size-4 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium">{item.name}</p>
-                    <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{item.sku}</p>
-                  </div>
-                </div>
-                <span className="font-mono text-xs">{fmtCurrency(item.price)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-between border-t border-border pt-4 text-sm font-semibold">
-            <span>Total</span><span className="font-mono">₹3,530</span>
-          </div>
-          <div className="mt-5 space-y-2">
-            <button id="run-normal-sim" disabled={agentPaused || simRunning} onClick={() => runSim('none')}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-3 text-xs font-semibold text-background hover:bg-accent/90 disabled:opacity-40 transition-all glow-green">
-              <Play className="size-3.5" /> Run agent (normal flow)
-            </button>
-            <button id="run-api-failure-sim" disabled={agentPaused || simRunning} onClick={() => runSim('api_failure')}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[oklch(0.65_0.20_25/40%)] py-3 text-xs font-medium text-[oklch(0.75_0.20_25)] hover:bg-[oklch(0.65_0.20_25/8%)] disabled:opacity-40 transition-all">
-              <WifiOff className="size-3.5" /> Failure #1: Razorpay API drop
-            </button>
-            <button id="run-bad-ai-sim" disabled={agentPaused || simRunning} onClick={() => runSim('bad_ai')}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[oklch(0.68_0.18_295/40%)] py-3 text-xs font-medium text-[oklch(0.78_0.18_295)] hover:bg-[oklch(0.68_0.18_295/8%)] disabled:opacity-40 transition-all">
-              <Shield className="size-3.5" /> Failure #2: Bad AI decision (sanity net)
-            </button>
-          </div>
-        </article>
-
-        {/* Terminal */}
-        <article className="terminal rounded-2xl overflow-hidden">
-          <div className="flex items-center justify-between border-b border-[oklch(0.18_0.014_265)] px-5 py-4">
-            <div className="flex items-center gap-2">
-              <Bot className="size-4 text-accent" />
-              <h3 className="text-sm font-medium text-foreground/80">Agent reasoning trace</h3>
-            </div>
-            <div className="flex items-center gap-2">
-              {simRunning && <span className="size-1.5 rounded-full bg-accent pulse-dot" />}
-              <span className="font-mono text-[10px] text-foreground/25">session_48291</span>
-            </div>
-          </div>
-          <div className="min-h-[360px] space-y-2 overflow-y-auto p-5 font-mono text-xs leading-relaxed">
-            {!simRunning && !simDone ? (
-              <div className="flex min-h-[300px] items-center justify-center text-center">
-                <div>
-                  <Activity className="mx-auto size-6 text-foreground/20" />
-                  <p className="mt-3 text-sm text-foreground/40">Waiting for checkout event</p>
-                  <p className="mt-1 text-xs text-foreground/25">Run a simulation to see live reasoning.</p>
-                </div>
-              </div>
-            ) : (
-              <>
-                {traceLines.slice(0, visible).map((line, i) => (
-                  <p key={i} className={`trace-line ${line.cls}`} style={{ animationDelay: `${i * 20}ms` }}>{line.text}</p>
-                ))}
-                {simRunning && visible < traceLines.length && (
-                  <p className="text-foreground/30 animate-pulse">▌</p>
-                )}
-                {simDone && <p className="mt-4 border-t border-white/10 pt-4 text-foreground/25">── end of trace ──</p>}
-              </>
-            )}
-          </div>
-        </article>
+        <a 
+          href="https://icecreamcookie.vercel.app/" 
+          target="_blank" 
+          rel="noreferrer"
+          className="text-xs text-accent hover:underline"
+        >
+          Open in new tab ↗
+        </a>
       </div>
+      <iframe 
+        src="https://icecreamcookie.vercel.app/" 
+        className="h-full w-full border-none bg-white"
+        title="SweetDrip Live Menu"
+      />
     </div>
   )
 }
