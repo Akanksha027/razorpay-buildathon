@@ -303,51 +303,51 @@ export default function LandingPage() {
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-0 border-l border-r border-[rgba(55,50,47,0.12)]">
                     <div className="border-b md:border-r border-[rgba(55,50,47,0.12)] p-4 sm:p-6 md:p-8 lg:p-12 flex flex-col gap-4 sm:gap-6">
                       <div className="flex flex-col gap-2">
-                        <h3 className="text-[#37322F] text-lg sm:text-xl font-semibold font-sans">Gemini + confidence</h3>
+                        <h3 className="text-[#37322F] text-lg sm:text-xl font-semibold font-sans">Live Policy Editor</h3>
                         <p className="text-[#605A57] text-sm md:text-base font-normal leading-relaxed font-sans">
-                          The model returns reasoning and a confidence score. Below threshold → forced escalation, even if policy numbers pass.
+                          Drag margin floor, daily budget caps, and AI confidence thresholds mid-demo — the agent adapts to new rules instantly.
                         </p>
                       </div>
-                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-lg flex items-center justify-center overflow-hidden">
-                        <SmartSimpleBrilliant width="100%" height="100%" theme="light" className="scale-50 sm:scale-65 md:scale-75 lg:scale-90" />
+                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-[6px] sm:rounded-lg flex items-start justify-center overflow-hidden bg-[#0a0a0a] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)]">
+                        <img src="/dashboard-policies.png" alt="Policies editor" className="w-full h-full object-cover object-top" />
                       </div>
                     </div>
 
                     <div className="border-b border-[rgba(55,50,47,0.12)] p-4 sm:p-6 md:p-8 lg:p-12 flex flex-col gap-4 sm:gap-6">
                       <div className="flex flex-col gap-2">
-                        <h3 className="text-[#37322F] font-semibold text-lg sm:text-xl font-sans">Non-AI rule-checker</h3>
+                        <h3 className="text-[#37322F] font-semibold text-lg sm:text-xl font-sans">Autonomous Campaign Agent</h3>
                         <p className="text-[#605A57] text-sm md:text-base font-normal leading-relaxed font-sans">
-                          Hard ceilings, margin floors, and budget caps — deterministic code the LLM cannot override before Razorpay is called.
+                          Proactive win-back campaigns that scan your CRM, prioritize by ROI, enforce budget constraints, and auto-generate Razorpay payment links.
                         </p>
                       </div>
-                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-lg flex overflow-hidden items-center justify-center">
-                        <YourWorkInSync width="400" height="250" theme="light" className="scale-60 sm:scale-75 md:scale-90" />
+                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-[6px] sm:rounded-lg flex overflow-hidden items-start justify-center bg-[#0a0a0a] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)]">
+                        <img src="/dashboard-campaign.png" alt="Campaign Agent" className="w-full h-full object-cover object-top" />
                       </div>
                     </div>
 
-                    <div className="md:border-r border-[rgba(55,50,47,0.12)] p-4 sm:p-6 md:p-8 lg:p-12 flex flex-col gap-4 sm:gap-6">
+                    <div className="md:border-r border-[rgba(55,50,47,0.12)] p-4 sm:p-6 md:p-8 lg:p-12 flex flex-col gap-4 sm:gap-6 border-b md:border-b-0">
                       <div className="flex flex-col gap-2">
-                        <h3 className="text-[#37322F] text-lg sm:text-xl font-semibold font-sans">Razorpay-native</h3>
+                        <h3 className="text-[#37322F] text-lg sm:text-xl font-semibold font-sans">Real-time Audit Trail</h3>
                         <p className="text-[#605A57] text-sm md:text-base font-normal leading-relaxed font-sans">
-                          Upsells create Orders; campaigns create Payment Links — all in test mode, with outage handling and idempotent retries.
+                          Every single AI decision is logged with its exact reasoning, a CFO-style cast analysis, risk score, and policy evaluation results.
                         </p>
                       </div>
-                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-lg flex overflow-hidden justify-center items-center relative">
-                        <EffortlessIntegration width={400} height={250} className="max-w-full max-h-full" />
-                        <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[#F7F5F3] to-transparent pointer-events-none"></div>
+                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-[6px] sm:rounded-lg flex overflow-hidden justify-center items-start relative bg-[#0a0a0a] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)]">
+                        <img src="/dashboard-overview.png" alt="Audit Trail" className="w-full h-full object-cover object-top" />
+                        <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#0a0a0a] to-transparent pointer-events-none opacity-80"></div>
                       </div>
                     </div>
 
                     <div className="p-4 sm:p-6 md:p-8 lg:p-12 flex flex-col gap-4 sm:gap-6">
                       <div className="flex flex-col gap-2">
-                        <h3 className="text-[#37322F] text-lg sm:text-xl font-semibold font-sans">Counterfactuals</h3>
+                        <h3 className="text-[#37322F] text-lg sm:text-xl font-semibold font-sans">Human-in-the-loop Approvals</h3>
                         <p className="text-[#605A57] text-sm md:text-base font-normal leading-relaxed font-sans">
-                          Replay any decision vs always-approve or flat 10% — prove the agent beat the obvious baseline on specific calls.
+                          When confidence is low or policies are breached, decisions hit an approval queue. Merchants can safely review anomalies before they go live.
                         </p>
                       </div>
-                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-lg flex overflow-hidden items-center justify-center relative">
-                        <NumbersThatSpeak width="100%" height="100%" theme="light" className="w-full h-full object-contain" />
-                        <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[#F7F5F3] to-transparent pointer-events-none"></div>
+                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-[6px] sm:rounded-lg flex overflow-hidden items-start justify-center relative bg-[#0a0a0a] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)]">
+                        <img src="/dashboard-approvals.png" alt="Approvals Queue" className="w-full h-full object-cover object-top" />
+                        <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#0a0a0a] to-transparent pointer-events-none opacity-80"></div>
                       </div>
                     </div>
                   </div>
