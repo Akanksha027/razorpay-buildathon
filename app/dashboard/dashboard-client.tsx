@@ -251,7 +251,6 @@ function OverviewPage({ onReplay }: { onReplay: (e: AuditEntry) => void }) {
         proposedDiscountPct: item.proposedDiscountPct,
         proposedDiscountInr: item.proposedDiscount,
         cartValueInr: item.cartValue,
-        upsellOriginalInr: Math.round((item.proposedDiscount / Math.max(1, item.proposedDiscountPct)) * 100),
         status: item.status,
         razorpayAmountInr: item.status === 'auto_approved' || item.status === 'approved' ? item.cartValue : 0,
         isAnomaly: item.isAnomaly,
