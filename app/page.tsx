@@ -60,7 +60,7 @@ export default function LandingPage() {
   return (
     <div className="w-full min-h-screen relative bg-[#F7F5F3] text-[#37322F] overflow-x-hidden flex flex-col justify-start items-center">
       <div className="relative flex flex-col justify-start items-center w-full">
-        <div className="w-full max-w-none px-4 sm:px-6 md:px-8 lg:px-0 lg:max-w-[1060px] lg:w-[1060px] relative flex flex-col justify-start items-start min-h-screen">
+        <div className="w-full relative flex flex-col justify-start items-start min-h-screen">
           <div className="w-[1px] h-full absolute left-4 sm:left-6 md:left-8 lg:left-0 top-0 bg-[rgba(55,50,47,0.12)] shadow-[1px_0px_0px_white] z-0"></div>
           <div className="w-[1px] h-full absolute right-4 sm:right-6 md:right-8 lg:right-0 top-0 bg-[rgba(55,50,47,0.12)] shadow-[1px_0px_0px_white] z-0"></div>
 
@@ -145,7 +145,7 @@ export default function LandingPage() {
 
               {/* Dashboard screenshots carousel */}
               <div className="w-full max-w-[960px] lg:w-[960px] pt-2 sm:pt-4 pb-6 sm:pb-8 md:pb-10 px-2 sm:px-4 md:px-6 lg:px-11 flex flex-col justify-center items-center gap-2 relative z-5 my-8 sm:my-12 md:my-16 lg:my-16 mb-0 lg:pb-0">
-                <div className="w-full max-w-[960px] aspect-video bg-[#0a0a0a] shadow-[0px_0px_0px_0.9px_rgba(0,0,0,0.08)] overflow-hidden rounded-[6px] sm:rounded-[8px] lg:rounded-[9px] flex flex-col justify-start items-start">
+                <div className="w-full max-w-[1200px] aspect-video bg-[#0a0a0a] shadow-[0px_0px_0px_0.9px_rgba(0,0,0,0.08)] overflow-hidden rounded-none flex flex-col justify-start items-start">
                   <div className="self-stretch flex-1 flex justify-start items-start">
                     <div className="w-full h-full flex items-center justify-center">
                       <div className="relative w-full h-full overflow-hidden">
@@ -304,7 +304,7 @@ export default function LandingPage() {
                           Drag margin floor, daily budget caps, and AI confidence thresholds mid-demo — the agent adapts to new rules instantly.
                         </p>
                       </div>
-                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-[6px] sm:rounded-lg flex items-start justify-center overflow-hidden bg-[#0a0a0a] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)]">
+                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-none flex items-start justify-center overflow-hidden bg-[#0a0a0a] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)]">
                         <img src="/dashboard-policies.png" alt="Policies editor" className="w-full h-full object-cover object-top" />
                       </div>
                     </div>
@@ -316,7 +316,7 @@ export default function LandingPage() {
                           Proactive win-back campaigns that scan your CRM, prioritize by ROI, enforce budget constraints, and auto-generate Razorpay payment links.
                         </p>
                       </div>
-                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-[6px] sm:rounded-lg flex overflow-hidden items-start justify-center bg-[#0a0a0a] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)]">
+                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-none flex overflow-hidden items-start justify-center bg-[#0a0a0a] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)]">
                         <img src="/dashboard-campaign.png" alt="Campaign Agent" className="w-full h-full object-cover object-top" />
                       </div>
                     </div>
@@ -328,7 +328,7 @@ export default function LandingPage() {
                           Every single AI decision is logged with its exact reasoning, a CFO-style cast analysis, risk score, and policy evaluation results.
                         </p>
                       </div>
-                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-[6px] sm:rounded-lg flex overflow-hidden justify-center items-start relative bg-[#0a0a0a] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)]">
+                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-none flex overflow-hidden justify-center items-start relative bg-[#0a0a0a] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)]">
                         <img src="/dashboard-overview.png" alt="Audit Trail" className="w-full h-full object-cover object-top" />
                         <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#0a0a0a] to-transparent pointer-events-none opacity-80"></div>
                       </div>
@@ -341,7 +341,7 @@ export default function LandingPage() {
                           When confidence is low or policies are breached, decisions hit an approval queue. Merchants can safely review anomalies before they go live.
                         </p>
                       </div>
-                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-[6px] sm:rounded-lg flex overflow-hidden items-start justify-center relative bg-[#0a0a0a] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)]">
+                      <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] rounded-none flex overflow-hidden items-start justify-center relative bg-[#0a0a0a] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)]">
                         <img src="/dashboard-approvals.png" alt="Approvals Queue" className="w-full h-full object-cover object-top" />
                         <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#0a0a0a] to-transparent pointer-events-none opacity-80"></div>
                       </div>
