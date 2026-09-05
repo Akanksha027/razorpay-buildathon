@@ -74,8 +74,8 @@ export default function DocumentationSection() {
       </div>
 
       {/* Content Section */}
-      <div className="self-stretch px-4 md:px-9 overflow-hidden flex justify-start items-center">
-        <div className="flex-1 py-8 md:py-11 flex flex-col md:flex-row justify-start items-center gap-6 md:gap-12">
+      <div className="w-full max-w-[1060px] px-4 md:px-9 overflow-hidden flex justify-center items-center">
+        <div className="w-full py-8 md:py-11 flex flex-col md:flex-row justify-center items-center gap-6 md:gap-12">
           {/* Left Column - Feature Cards */}
           <div className="w-full md:w-auto md:max-w-[400px] flex flex-col justify-center items-center gap-4 order-2 md:order-1">
             {cards.map((card, index) => {
