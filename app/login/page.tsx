@@ -8,21 +8,19 @@ import { loginSession } from '../../lib/auth'
 export default function LoginPage() {
   const router = useRouter()
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('merchant@northstar.in')
-  const [password, setPassword] = useState('demo')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
-    if (!email.trim() || !password.trim()) {
-      setError('Enter email and password to continue.')
+    if (!name.trim()) {
+      setError('Enter your name to continue.')
       return
     }
     setLoading(true)
-    // Demo login — any credentials work for the buildathon walkthrough
-    loginSession(email.trim(), name.trim() || undefined)
+    // Demo login — pass a dummy email and the entered name
+    loginSession('demo@merchant.com', name.trim())
     router.push('/dashboard')
   }
 
@@ -53,28 +51,7 @@ export default function LoginPage() {
                 autoComplete="name"
               />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-[#605A57] mb-1.5">Work email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-xl border border-[rgba(55,50,47,0.15)] bg-[#FBFAf9] px-3.5 py-2.5 text-sm outline-none focus:border-[#37322F] focus:ring-2 focus:ring-[rgba(55,50,47,0.08)]"
-                placeholder="you@merchant.com"
-                autoComplete="email"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#605A57] mb-1.5">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-xl border border-[rgba(55,50,47,0.15)] bg-[#FBFAf9] px-3.5 py-2.5 text-sm outline-none focus:border-[#37322F] focus:ring-2 focus:ring-[rgba(55,50,47,0.08)]"
-                placeholder="••••••••"
-                autoComplete="current-password"
-              />
-            </div>
+
             {error && <p className="text-xs text-red-600">{error}</p>}
             <button
               type="submit"
@@ -86,7 +63,7 @@ export default function LoginPage() {
           </form>
 
           <p className="mt-6 text-[11px] text-[#605A57] text-center leading-5">
-            Demo mode: any email/password works. Built for the Razorpay AI Buildathon.
+            Demo mode: any name works. Built for the Razorpay AI Buildathon.
           </p>
         </div>
       </main>
