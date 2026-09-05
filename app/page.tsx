@@ -25,7 +25,7 @@ function Badge({ icon, text }: { icon: React.ReactNode; text: string }) {
   )
 }
 
-const PARTNERS = ["Razorpay", "Gemini", "SweetDrip", "Northstar", "Buildathon", "Merchants", "Ops", "Finance"]
+const PARTNERS = ["Razorpay", "Gemini", "SweetDrip", "Buildathon"]
 
 export default function LandingPage() {
   const [activeCard, setActiveCard] = useState(0)
@@ -82,11 +82,7 @@ export default function LandingPage() {
                         Product
                       </div>
                     </a>
-                    <a href="#pricing" className="flex justify-start items-center">
-                      <div className="flex flex-col justify-center text-[rgba(49,45,43,0.80)] text-xs md:text-[13px] font-medium leading-[14px] font-sans">
-                        Pricing
-                      </div>
-                    </a>
+
                     <a href="#faq" className="flex justify-start items-center">
                       <div className="flex flex-col justify-center text-[rgba(49,45,43,0.80)] text-xs md:text-[13px] font-medium leading-[14px] font-sans">
                         FAQ
@@ -364,9 +360,6 @@ export default function LandingPage() {
 
               <DocumentationSection />
               <TestimonialsSection />
-              <div id="pricing" className="w-full">
-                <PricingSection />
-              </div>
               <div id="faq" className="w-full">
                 <FAQSection />
               </div>
