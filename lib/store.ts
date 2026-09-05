@@ -79,12 +79,12 @@ export interface CustomerRecord {
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 
 export const MOCK_CUSTOMERS: CustomerRecord[] = [
-  { id: 'C482', name: 'A. Shah', lastOrderValue: 4200, lastOrderDate: new Date(Date.now() - 63 * 86400000), totalLTV: 22400, segmentTag: 'high_value', preferredCategories: ['accessories', 'apparel'] },
-  { id: 'C731', name: 'R. Kumar', lastOrderValue: 2800, lastOrderDate: new Date(Date.now() - 45 * 86400000), totalLTV: 11200, segmentTag: 'mid_value', preferredCategories: ['footwear', 'accessories'] },
-  { id: 'C119', name: 'M. Patel', lastOrderValue: 1100, lastOrderDate: new Date(Date.now() - 90 * 86400000), totalLTV: 4800, segmentTag: 'low_value', preferredCategories: ['apparel'] },
-  { id: 'C205', name: 'S. Iyer', lastOrderValue: 3650, lastOrderDate: new Date(Date.now() - 55 * 86400000), totalLTV: 18900, segmentTag: 'high_value', preferredCategories: ['bags', 'accessories'] },
-  { id: 'C390', name: 'P. Nair', lastOrderValue: 5200, lastOrderDate: new Date(Date.now() - 30 * 86400000), totalLTV: 31000, segmentTag: 'high_value', preferredCategories: ['footwear'] },
-  { id: 'C094', name: 'N. Gupta', lastOrderValue: 870, lastOrderDate: new Date(Date.now() - 120 * 86400000), totalLTV: 2100, segmentTag: 'low_value', preferredCategories: ['apparel'] },
+  { id: 'C482', name: 'A. Shah', lastOrderValue: 1200, lastOrderDate: new Date(Date.now() - 63 * 86400000), totalLTV: 14400, segmentTag: 'high_value', preferredCategories: ['sundaes', 'milkshakes'] },
+  { id: 'C731', name: 'R. Kumar', lastOrderValue: 800, lastOrderDate: new Date(Date.now() - 45 * 86400000), totalLTV: 5200, segmentTag: 'mid_value', preferredCategories: ['gelato', 'waffle cones'] },
+  { id: 'C119', name: 'M. Patel', lastOrderValue: 450, lastOrderDate: new Date(Date.now() - 90 * 86400000), totalLTV: 1800, segmentTag: 'low_value', preferredCategories: ['popsicles'] },
+  { id: 'C205', name: 'S. Iyer', lastOrderValue: 2150, lastOrderDate: new Date(Date.now() - 55 * 86400000), totalLTV: 18900, segmentTag: 'high_value', preferredCategories: ['ice cream cakes', 'party packs'] },
+  { id: 'C390', name: 'P. Nair', lastOrderValue: 3200, lastOrderDate: new Date(Date.now() - 30 * 86400000), totalLTV: 31000, segmentTag: 'high_value', preferredCategories: ['catering', 'gelato tubs'] },
+  { id: 'C094', name: 'N. Gupta', lastOrderValue: 350, lastOrderDate: new Date(Date.now() - 120 * 86400000), totalLTV: 1050, segmentTag: 'low_value', preferredCategories: ['single scoops'] },
 ]
 
 // ─── Supabase → AuditEntry converter ─────────────────────────────────────────
