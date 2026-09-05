@@ -92,8 +92,13 @@ export default function Dashboard() {
 
   const {
     agentPaused, toggleAgent, budget, policy,
-    pendingApprovals, totalDecisions,
+    pendingApprovals, totalDecisions, initSupabaseSync,
   } = useStore()
+
+  // Initialize Supabase real-time sync on mount
+  useEffect(() => {
+    initSupabaseSync()
+  }, [initSupabaseSync])
 
   const budgetPct = Math.round((budget.dailyUsed / policy.dailyTotalCap) * 100)
   const approvalCount = pendingApprovals.length
